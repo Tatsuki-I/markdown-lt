@@ -1,0 +1,15 @@
+<div class="slide-shell">
+  <div class="slide-header"></div>
+  <div class="slide-body">
+    <div class="title-stack">
+      <h1>{{ title }}</h1>
+      {% if subtitle_html %}
+        <div class="title-subtitle">{{ subtitle_html | safe }}</div>
+      {% endif %}
+      {% if meta_html %}
+        <div class="title-meta">{{ meta_html | safe }}</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="slide-footer"></div>
+</div>

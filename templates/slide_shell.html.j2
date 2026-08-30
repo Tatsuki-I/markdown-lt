@@ -1,0 +1,9 @@
+<div class="slide-shell">
+  <div class="slide-header">{{ header_html | safe }}</div>
+  <div class="slide-body">{{ body_html | safe }}</div>
+  {% if footer_html %}
+    <div class="slide-footer-wrap">
+      {{ footer_html | safe }}
+    </div>
+  {% endif %}
+</div>

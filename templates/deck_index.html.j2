@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>Slide Deck List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/static/lt.css" />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 4vh 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      .panel {
+        width: min(72rem, 90vw);
+        margin: 0 auto;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.4);
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 2rem;
+      }
+
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 1rem 0 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+      }
+
+      @media (max-width: 720px) {
+        ul {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-transition-overlay" aria-hidden="true"></div>
+    <main class="panel">
+      <h1>Slides</h1>
+      <ul>
+        {% if decks %}
+          {% for deck in decks %}
+            <li class="deck-list-item" style="--delay: {{ loop.index0 * 70 }}ms;">
+              <a class="deck-link" href="/slides/{{ deck.folder }}">
+                <div class="deck-folder">{{ deck.folder }}</div>
+                <div class="deck-title">{{ deck.title }}</div>
+                {% if deck.subtitle %}
+                  <div class="deck-subtitle">{{ deck.subtitle }}</div>
+                {% endif %}
+                <div class="deck-meta">
+                  {% if deck.author %}
+                    <span class="deck-meta-item">By {{ deck.author }}</span>
+                  {% endif %}
+                  {% if deck.date %}
+                    <span class="deck-meta-item">{{ deck.date }}</span>
+                  {% endif %}
+                </div>
+              </a>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li>表示できるスライドがまだありません。</li>
+        {% endif %}
+      </ul>
+    </main>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.classList.add('ready');
+        const overlay = document.querySelector('.page-transition-overlay');
+        document.querySelectorAll('a[href]').forEach((link) => {
+          const href = link.getAttribute('href');
+          if (!href || href.startsWith('#')) return;
+
+          link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const card = link.closest('li');
+            if (card) card.classList.add('is-selecting');
+            if (overlay) overlay.classList.add('visible');
+            setTimeout(() => {
+              window.location.href = href;
+            }, 260);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

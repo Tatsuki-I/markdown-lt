@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --bg: {{ theme.background }};
+        --text: {{ theme.text }};
+        --accent: {{ theme.accent }};
+        --muted: {{ theme.muted }};
+      }
+
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      body {
+        position: relative;
+      }
+    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/line-numbers/prism-line-numbers.min.css" />
+    <link rel="stylesheet" href="/static/lt.css?v=20260828e" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="deck" id="deck">
+        {% for slide in slides %}
+          <section class="slide{% if loop.first %} active title-slide{% endif %}">
+            {{ slide | safe }}
+          </section>
+        {% endfor %}
+      </div>
+
+      <div class="nav-shell">
+        <div class="seek-bar-stack" aria-hidden="true">
+          <div class="seek-track top">
+            <div class="seek-warning-fill" id="seekWarningFill"></div>
+            <div class="seek-progress blue" id="seekProgressBlue"></div>
+          </div>
+          <div class="seek-track bottom">
+            <div class="seek-progress green" id="seekProgressGreen"></div>
+          </div>
+        </div>
+        <div class="nav-overlay">
+          <button class="utility-button home" aria-label="Home" title="Home" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 10.5 12 3l9 7.5"></path>
+              <path d="M5 9.5V20h14V9.5"></path>
+              <path d="M9 20v-7h6v7"></path>
+            </svg>
+          </button>
+          <div class="nav-group">
+            <button class="nav-button" id="prevBtn">← Prev</button>
+            <div class="page-counter" id="pageCounter">1 / 1</div>
+            <button class="nav-button" id="nextBtn">Next →</button>
+          </div>
+          <div class="utility-button zoom" aria-label="Font controls">
+            <button type="button" class="zoom-btn zoom-out" aria-label="Zoom out">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="M16 16L21 21"></path>
+                <path d="M8 11h6"></path>
+              </svg>
+            </button>
+            <button type="button" class="zoom-btn zoom-in" aria-label="Zoom in">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="M16 16L21 21"></path>
+                <path d="M11 8v6"></path>
+                <path d="M8 11h6"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="timer-alert-overlay" id="timerAlertOverlay" aria-hidden="true">
+      <div class="alert-haze"></div>
+      <div class="alert-wave alert-wave-a"></div>
+      <div class="alert-wave alert-wave-b"></div>
+    </div>
+
+    <div class="timer-shell" aria-label="Countdown timer controls">
+      <button type="button" class="timer-start-btn" id="timerStartBtn" aria-label="Start countdown">開始</button>
+      <button type="button" class="timer-mode-toggle" id="timerModeToggle" aria-label="Toggle timer mode" title="3分モード" data-mode="5">
+        <span class="timer-mode-track">
+          <span class="timer-mode-label timer-mode-label-5">5</span>
+          <span class="timer-mode-label timer-mode-label-3">3</span>
+          <span class="timer-mode-knob"></span>
+        </span>
+      </button>
+      <div class="utility-button timer" id="timerDisplay" aria-live="polite" aria-atomic="true">05:00</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <script>
+      const timerConfig = {{ timer_config | tojson }};
+      const timerModes = {
+        easy: {
+          label: '5',
+          seconds: Number(timerConfig.easy.seconds),
+          alertSeconds: Number(timerConfig.easy.alertSeconds),
+        },
+        hard: {
+          label: '3',
+          seconds: Number(timerConfig.hard.seconds),
+          alertSeconds: Number(timerConfig.hard.alertSeconds),
+        },
+      };
+
+      mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+      if (window.Prism) {
+        Prism.highlightAll();
+      }
+
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      const pageCounter = document.getElementById('pageCounter');
+      const seekProgressBlue = document.getElementById('seekProgressBlue');
+      const seekProgressGreen = document.getElementById('seekProgressGreen');
+      const seekWarningFill = document.getElementById('seekWarningFill');
+      const expansionKeys = ['is-left-expanded', 'is-center-expanded', 'is-right-expanded', 'is-top-expanded', 'is-bottom-expanded'];
+      const bodyScaleMin = 0.8;
+      const bodyScaleMax = 1.6;
+      const bodyScaleStep = 0.1;
+      let currentIndex = 0;
+
+      function applyBodyFontScale(scale) {
+        const clamped = Math.min(Math.max(scale, bodyScaleMin), bodyScaleMax);
+        document.documentElement.style.setProperty('--body-font-scale', clamped.toFixed(2));
+      }
+
+      function adjustBodyFontScale(delta) {
+        const currentScale = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--body-font-scale')) || 1;
+        applyBodyFontScale(currentScale + delta);
+      }
+
+      function collapseExpandedColumns(slide) {
+        if (!slide) return;
+
+        const parent = slide.querySelector('.two-col, .three-col, .left-right-vertical');
+        if (!parent) return;
+
+        expansionKeys.forEach((key) => parent.classList.remove(key));
+        slide.querySelectorAll('.left-column, .center-column, .right-column, .top-column, .bottom-column').forEach((column) => {
+          column.setAttribute('aria-expanded', 'false');
+        });
+        syncExpandedOverflow();
+      }
+
+      function syncExpandedOverflow() {
+        slides.forEach((slide) => {
+          const activeExpanded = slide.querySelector('.two-col.is-left-expanded, .two-col.is-right-expanded, .three-col.is-left-expanded, .three-col.is-center-expanded, .three-col.is-right-expanded, .left-right-vertical.is-left-expanded, .left-right-vertical.is-right-expanded, .left-right-vertical.is-top-expanded, .left-right-vertical.is-bottom-expanded');
+          const body = slide.querySelector('.slide-body');
+          const isActive = slide.classList.contains('active');
+
+          if (isActive && activeExpanded) {
+            slide.style.overflow = 'visible';
+            if (body) body.style.overflow = 'visible';
+          } else {
+            slide.style.overflow = '';
+            if (body) body.style.overflow = '';
+          }
+        });
+      }
+
+      function updateSlides() {
+        slides.forEach((slide, index) => {
+          slide.classList.toggle('active', index === currentIndex);
+        });
+        syncExpandedOverflow();
+        if (pageCounter) {
+          pageCounter.textContent = `${currentIndex + 1} / ${slides.length}`;
+        }
+        if (slides.length > 1) {
+          const progress = (currentIndex / (slides.length - 1)) * 100;
+          if (seekProgressGreen) seekProgressGreen.style.width = `${progress}%`;
+        } else if (seekProgressGreen) {
+          seekProgressGreen.style.width = '0%';
+        }
+
+        if (seekProgressBlue) {
+          const timerProgress = timerDurationSeconds > 0 ? ((timerDurationSeconds - timerRemaining) / timerDurationSeconds) * 100 : 0;
+          seekProgressBlue.style.width = `${Math.min(Math.max(timerProgress, 0), 100)}%`;
+        }
+      }
+
+      function goTo(index) {
+        if (index < 0) index = 0;
+        if (index >= slides.length) index = slides.length - 1;
+        currentIndex = index;
+        if (currentIndex >= 1 && !timerStarted) {
+          startTimer();
+        }
+        updateSlides();
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.classList.add('ready');
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowRight' || event.key === 'Enter' || event.key === 'PageDown') {
+          goTo(currentIndex + 1);
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'Backspace' || event.key === 'PageUp') {
+          goTo(currentIndex - 1);
+        }
+      });
+
+      document.querySelectorAll('.left-column, .center-column, .right-column, .top-column, .bottom-column').forEach((column) => {
+        const parent = column.closest('.two-col, .three-col, .left-right-vertical');
+        if (!parent) return;
+
+        const columnName = column.classList[0];
+        const stateKey = `is-${columnName.replace('-column', '')}-expanded`;
+
+        const setExpandedState = (nextState) => {
+          expansionKeys.forEach((key) => parent.classList.toggle(key, key === nextState));
+          column.setAttribute('aria-expanded', String(Boolean(nextState)));
+          syncExpandedOverflow();
+        };
+
+        const toggleExpanded = (event) => {
+          if (event) {
+            event.stopPropagation();
+          }
+          const currentState = Array.from(parent.classList).find((key) => key.startsWith('is-') && key.endsWith('-expanded'));
+          const nextState = currentState === stateKey ? null : stateKey;
+          setExpandedState(nextState);
+        };
+
+        column.setAttribute('tabindex', '0');
+        column.setAttribute('role', 'button');
+        column.setAttribute('aria-expanded', 'false');
+        column.addEventListener('click', toggleExpanded);
+        column.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleExpanded();
+          }
+        });
+
+        if (parent.classList.contains(stateKey)) {
+          column.setAttribute('aria-expanded', 'true');
+        }
+      });
+
+      document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+
+        const slide = target.closest('.slide');
+        if (!slide) {
+          return;
+        }
+
+        const clickedColumn = target.closest('.left-column, .center-column, .right-column, .top-column, .bottom-column');
+        const clickedUtility = target.closest('.nav-button, .utility-button, button');
+        if (clickedColumn || clickedUtility) {
+          return;
+        }
+
+        const expandedParent = slide.querySelector('.two-col.is-left-expanded, .two-col.is-right-expanded, .three-col.is-left-expanded, .three-col.is-center-expanded, .three-col.is-right-expanded, .left-right-vertical.is-left-expanded, .left-right-vertical.is-right-expanded, .left-right-vertical.is-top-expanded, .left-right-vertical.is-bottom-expanded');
+        if (!expandedParent) {
+          return;
+        }
+
+        collapseExpandedColumns(slide);
+      });
+
+      const nextBtn = document.getElementById('nextBtn');
+      const prevBtn = document.getElementById('prevBtn');
+      const zoomOutBtn = document.querySelector('.zoom-btn.zoom-out');
+      const zoomInBtn = document.querySelector('.zoom-btn.zoom-in');
+      const timerDisplay = document.getElementById('timerDisplay');
+      const timerStartBtn = document.getElementById('timerStartBtn');
+      const timerModeToggle = document.getElementById('timerModeToggle');
+      const defaultModeName = 'easy';
+      const defaultTimerSeconds = timerModes.easy.seconds;
+      const shortTimerSeconds = timerModes.hard.seconds;
+      let timerMode = defaultModeName;
+      let timerDurationSeconds = defaultTimerSeconds;
+      let timerRemaining = timerDurationSeconds;
+      let timerStartedAt = 0;
+      let timerAnimationFrameId = null;
+      let timerStarted = false;
+
+      function formatTimerValue(totalSeconds) {
+        const normalized = Math.max(0, Math.ceil(totalSeconds));
+        const minutes = Math.floor(normalized / 60);
+        const seconds = normalized % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+
+      function updateTimerDisplay() {
+        const activeMode = timerMode === 'hard' ? timerModes.hard : timerModes.easy;
+        const alertThresholdSeconds = activeMode.alertSeconds;
+        const shouldWarn = timerRemaining <= alertThresholdSeconds;
+        const alertStartPercent = ((timerDurationSeconds - alertThresholdSeconds) / timerDurationSeconds) * 100;
+
+        document.body.classList.toggle('timer-alert-active', shouldWarn);
+
+        if (timerDisplay) {
+          timerDisplay.textContent = formatTimerValue(timerRemaining);
+          timerDisplay.classList.toggle('timer-warning', shouldWarn);
+        }
+        if (seekProgressBlue) {
+          const timerProgress = timerDurationSeconds > 0 ? ((timerDurationSeconds - timerRemaining) / timerDurationSeconds) * 100 : 0;
+          const alertElapsedSeconds = Math.max(0, timerDurationSeconds - timerRemaining - (timerDurationSeconds - alertThresholdSeconds));
+          const alertRatio = alertThresholdSeconds > 0 ? Math.min(1, Math.max(0, alertElapsedSeconds / alertThresholdSeconds)) : 0;
+          const alertRedAlpha = 0.12 + alertRatio * 0.86;
+          const alertGlow = 0.15 + alertRatio * 0.85;
+
+          seekProgressBlue.style.width = `${Math.min(Math.max(timerProgress, 0), 100)}%`;
+          seekProgressBlue.style.setProperty('--alert-start', `${alertStartPercent}%`);
+          seekProgressBlue.style.setProperty('--alert-red-alpha', alertRedAlpha.toFixed(3));
+          seekProgressBlue.style.setProperty('--alert-glow-alpha', alertGlow.toFixed(3));
+          seekProgressBlue.classList.toggle('warning', shouldWarn);
+
+          if (seekWarningFill) {
+            const remainingAlertWidth = Math.max(0, 100 - alertStartPercent);
+            seekWarningFill.style.left = `${alertStartPercent}%`;
+            seekWarningFill.style.width = `${remainingAlertWidth}%`;
+            seekWarningFill.style.opacity = shouldWarn ? '1' : '0.9';
+            seekWarningFill.classList.toggle('active', shouldWarn);
+          }
+
+          document.documentElement.style.setProperty('--alert-start', `${alertStartPercent}%`);
+          document.documentElement.style.setProperty('--alert-red-gray-alpha', shouldWarn ? '0.28' : '0.2');
+          document.documentElement.style.setProperty('--alert-red-warn-alpha', alertRedAlpha.toFixed(3));
+        }
+      }
+
+      function stopTimer() {
+        if (timerAnimationFrameId) {
+          cancelAnimationFrame(timerAnimationFrameId);
+          timerAnimationFrameId = null;
+        }
+      }
+
+      function applyTimerMode(modeName) {
+        const mode = timerModes[modeName];
+        timerMode = modeName;
+        timerDurationSeconds = mode.seconds;
+        timerRemaining = mode.seconds;
+        timerStarted = false;
+        timerStartedAt = 0;
+        stopTimer();
+        updateTimerDisplay();
+
+        if (timerStartBtn) {
+          timerStartBtn.disabled = false;
+          timerStartBtn.textContent = '開始';
+        }
+
+        if (timerModeToggle) {
+          timerModeToggle.dataset.mode = String(mode.label);
+          timerModeToggle.classList.toggle('is-short', modeName === 'hard');
+          timerModeToggle.title = modeName === 'hard' ? 'Easyモード' : 'Hardモード';
+        }
+      }
+
+      function tickTimer() {
+        if (!timerStarted) {
+          return;
+        }
+
+        const elapsedSeconds = (performance.now() - timerStartedAt) / 1000;
+        timerRemaining = Math.max(0, timerDurationSeconds - elapsedSeconds);
+        updateTimerDisplay();
+
+        if (timerRemaining <= 0) {
+          stopTimer();
+          timerStarted = false;
+          timerRemaining = timerDurationSeconds;
+          updateTimerDisplay();
+          if (timerStartBtn) {
+            timerStartBtn.disabled = false;
+            timerStartBtn.textContent = '開始';
+          }
+          return;
+        }
+
+        timerAnimationFrameId = requestAnimationFrame(tickTimer);
+      }
+
+      function startTimer() {
+        if (timerStarted) {
+          return;
+        }
+
+        timerStarted = true;
+        timerStartedAt = performance.now();
+        if (timerStartBtn) {
+          timerStartBtn.disabled = true;
+          timerStartBtn.textContent = '開始済み';
+        }
+        if (timerModeToggle) {
+          timerModeToggle.disabled = true;
+        }
+
+        stopTimer();
+        timerAnimationFrameId = requestAnimationFrame(tickTimer);
+        updateTimerDisplay();
+      }
+
+      function resetTimer() {
+        stopTimer();
+        timerStarted = false;
+        timerStartedAt = 0;
+        timerRemaining = timerDurationSeconds;
+        updateTimerDisplay();
+        if (timerStartBtn) {
+          timerStartBtn.disabled = false;
+          timerStartBtn.textContent = '開始';
+        }
+        if (timerModeToggle) {
+          timerModeToggle.disabled = false;
+        }
+      }
+
+      if (nextBtn) nextBtn.addEventListener('click', () => goTo(currentIndex + 1));
+      if (prevBtn) prevBtn.addEventListener('click', () => goTo(currentIndex - 1));
+      if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => adjustBodyFontScale(-bodyScaleStep));
+      if (zoomInBtn) zoomInBtn.addEventListener('click', () => adjustBodyFontScale(bodyScaleStep));
+      if (timerStartBtn) timerStartBtn.addEventListener('click', startTimer);
+      if (timerModeToggle) {
+        timerModeToggle.addEventListener('click', () => {
+          const nextModeName = timerMode === 'easy' ? 'hard' : 'easy';
+          applyTimerMode(nextModeName);
+        });
+        applyTimerMode(defaultModeName);
+      }
+
+      const homeBtn = document.querySelector('.utility-button.home');
+
+      if (homeBtn) {
+        homeBtn.addEventListener('click', () => {
+          window.location.href = '/';
+        });
+      }
+
+      updateTimerDisplay();
+      updateSlides();
+      document.body.classList.add('ready');
+    </script>
+  </body>
+</html>
